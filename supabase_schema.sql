@@ -7,6 +7,7 @@ create extension if not exists "uuid-ossp";
 create table public.profiles (
   id uuid references auth.users(id) on delete cascade primary key,
   name text not null,
+  email text,
   role text not null check (role in ('doctor', 'receptionist', 'admin')),
   is_available boolean default true,
   reg_number text,
@@ -93,10 +94,11 @@ create policy "Allow auth CRUD on settings" on public.settings for all using (au
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, name, role, is_available, reg_number)
+  insert into public.profiles (id, name, email, role, is_available, reg_number)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'name', 'Unknown User'),
+    new.email,
     coalesce(new.raw_user_meta_data->>'role', 'receptionist'),
     true,
     new.raw_user_meta_data->>'reg_number'
