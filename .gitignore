@@ -31,3 +31,8 @@ npm-debug.log*
 pocketbase
 pb_data/
 pb_migrations/
+
+# Deployment services
+.vercel/
+.netlify/
+
