@@ -83,6 +83,11 @@ export function generatePrescriptionPDF({ token, patient, prescription, doctor, 
     line(`Notes: ${prescription.notes}`);
   }
 
+  if (prescription.report) {
+    y += 4;
+    line(`Clinical Report: ${prescription.report}`);
+  }
+
   // Signature line
   y = doc.internal.pageSize.getHeight() - 25;
   doc.line(W - 60, y, W - 14, y);

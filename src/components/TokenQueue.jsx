@@ -17,7 +17,9 @@ export default function TokenQueue({
   showBillButton,
   onGenerateBill,
   paidTokenIds = new Set(),
-  unpaidTokenIds = new Set()
+  unpaidTokenIds = new Set(),
+  doctors = [],
+  onAssignDoctor
 }) {
   const statusOrder = { waiting: 0, in_progress: 1, done: 2 };
   const sorted = [...tokens].sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
@@ -92,6 +94,26 @@ export default function TokenQueue({
                     <p className="text-[11px] text-primary-700 font-medium italic mt-0.5 bg-primary-50 px-1.5 py-0.2 rounded inline-block">
                       Complaint: {token.chief_complaint}
                     </p>
+                  )}
+                  {token.expand?.doctor?.name && (
+                    <p className="text-[10px] text-emerald-700 font-semibold mt-1">
+                      Doctor: Dr. {token.expand.doctor.name}
+                    </p>
+                  )}
+                  {showBillButton && onAssignDoctor && token.status !== 'done' && (
+                    <div className="mt-1.5 flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Assign:</span>
+                      <select
+                        value={token.doctor || ''}
+                        onChange={e => onAssignDoctor(token.id, e.target.value || '')}
+                        className="bg-white border border-slate-200 text-[10px] rounded px-1.5 py-0.5 focus:outline-none focus:border-primary-500 font-medium text-slate-700 cursor-pointer"
+                      >
+                        <option value="">Unassigned</option>
+                        {doctors.map(doc => (
+                          <option key={doc.id} value={doc.id}>Dr. {doc.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   )}
                 </div>
               </div>

@@ -9,13 +9,19 @@ import { generateBillPDF } from '../lib/pdfBill';
 
 export default function ReceptionistDashboard() {
   console.log('[ReceptionistDashboard] rendering');
-  const { user, logout } = useAuth();
+  const { user: authUser, logout } = useAuth();
+  const user = authUser || {
+    id: 'e0000000-0000-0000-0000-000000000000',
+    name: 'Guest Receptionist',
+    email: 'receptionist@cliniq.com',
+    role: 'receptionist'
+  };
   const { settings } = useSettings();
   const { addToast } = useToast();
   const today = new Date().toISOString().split('T')[0];
 
   // --- State Variables ---
-  const [form, setForm] = useState({ name: '', phone: '', dob: '', address: '', blood_group: '', chief_complaint: '' });
+  const [form, setForm] = useState({ name: '', phone: '', dob: '', address: '', blood_group: '', chief_complaint: '', doctor: '' });
   const [submitting, setSubmitting] = useState(false);
   
   // Autocomplete suggestions
@@ -28,6 +34,7 @@ export default function ReceptionistDashboard() {
   const [tokens, setTokens] = useState([]);
   const [bills, setBills] = useState([]);
   const [doctorsList, setDoctorsList] = useState([]);
+  const [allPatients, setAllPatients] = useState([]);
 
   // Active Billing State
   const [activeTokenToBill, setActiveTokenToBill] = useState(null);
@@ -36,7 +43,6 @@ export default function ReceptionistDashboard() {
 
   // Search patients & History State
   const [searchQuery, setSearchQuery] = useState('');
-  const [foundPatients, setFoundPatients] = useState([]);
   const [historyPatient, setHistoryPatient] = useState(null);
   const [patientHistoryList, setPatientHistoryList] = useState([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -118,10 +124,24 @@ export default function ReceptionistDashboard() {
     }
   }, []);
 
+  const fetchAllPatients = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('patients')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      setAllPatients(data || []);
+    } catch (err) {
+      console.error('Error fetching patients:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTokens();
     fetchBills();
     fetchDoctors();
+    fetchAllPatients();
 
     // Subscribe to real-time events in Supabase
     const tokensChannel = supabase.channel('tokens-receptionist')
@@ -136,12 +156,17 @@ export default function ReceptionistDashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchDoctors())
       .subscribe();
 
+    const patientsChannel = supabase.channel('patients-receptionist')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => fetchAllPatients())
+      .subscribe();
+
     return () => {
       supabase.removeChannel(tokensChannel);
       supabase.removeChannel(billsChannel);
       supabase.removeChannel(profilesChannel);
+      supabase.removeChannel(patientsChannel);
     };
-  }, [fetchTokens, fetchBills, fetchDoctors]);
+  }, [fetchTokens, fetchBills, fetchDoctors, fetchAllPatients]);
 
   // --- Keyboard Shortcuts (P1 7.8) ---
   useEffect(() => {
@@ -162,21 +187,11 @@ export default function ReceptionistDashboard() {
       setSuggestions([]);
       return;
     }
-    const timer = setTimeout(async () => {
-      try {
-        const { data, error } = await supabase
-          .from('patients')
-          .select('*')
-          .ilike('phone', `%${form.phone}%`)
-          .limit(5);
-        if (error) throw error;
-        setSuggestions(data || []);
-      } catch (err) {
-        console.error(err);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [form.phone]);
+    const matching = allPatients
+      .filter(p => p.phone.includes(form.phone))
+      .slice(0, 5);
+    setSuggestions(matching);
+  }, [form.phone, allPatients]);
 
   const handleSelectSuggestion = (patient) => {
     setForm({
@@ -308,14 +323,15 @@ export default function ReceptionistDashboard() {
           date:         today,
           status:       'waiting',
           receptionist: user.id,
-          chief_complaint: form.chief_complaint
+          chief_complaint: form.chief_complaint,
+          doctor:       form.doctor || null
         });
       if (insertErr) throw insertErr;
 
       addToast(`Token #${nextTokenNum} successfully assigned to ${patient.name}!`);
       
       // Reset form
-      setForm({ name: '', phone: '', dob: '', address: '', blood_group: '', chief_complaint: '' });
+      setForm({ name: '', phone: '', dob: '', address: '', blood_group: '', chief_complaint: '', doctor: '' });
       setConfirmRevisitOpen(false);
       setRevisitPatientData(null);
     } catch (err) {
@@ -325,22 +341,22 @@ export default function ReceptionistDashboard() {
   };
 
   // --- Patient Search & Visit History Panel (P0 7.5) ---
-  const handlePatientSearch = async (e) => {
-    const val = e.target.value;
-    setSearchQuery(val);
-    if (val.trim().length < 2) {
-      setFoundPatients([]);
-      return;
-    }
+  const handlePatientSearch = (e) => {
+    setSearchQuery(e.target.value);
+  };
+
+  const handleAssignDoctor = async (tokenId, doctorId) => {
     try {
-      const { data, error } = await supabase
-        .from('patients')
-        .select('*')
-        .or(`name.ilike.%${val}%,phone.ilike.%${val}%`);
+      const { error } = await supabase
+        .from('tokens')
+        .update({ doctor: doctorId || null })
+        .eq('id', tokenId);
       if (error) throw error;
-      setFoundPatients(data || []);
+      addToast('Doctor assignment updated successfully.', 'success');
+      fetchTokens();
     } catch (err) {
       console.error(err);
+      addToast('Failed to update doctor assignment.', 'error');
     }
   };
 
@@ -524,6 +540,13 @@ export default function ReceptionistDashboard() {
     }
   };
 
+  const displayedPatients = searchQuery.trim() === ''
+    ? allPatients
+    : allPatients.filter(p => 
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        p.phone.includes(searchQuery)
+      );
+
   const summary = getDailySummary();
   const paidTokenIds = new Set(bills.filter(b => b.paid).map(b => b.token));
   const unpaidTokenIds = new Set(bills.filter(b => !b.paid).map(b => b.token));
@@ -645,6 +668,19 @@ export default function ReceptionistDashboard() {
                 onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
               />
 
+              <select
+                className="input text-xs"
+                value={form.doctor}
+                onChange={e => setForm(f => ({ ...f, doctor: e.target.value }))}
+              >
+                <option value="">Assign Doctor (Optional)</option>
+                {doctorsList.map(doc => (
+                  <option key={doc.id} value={doc.id}>
+                    Dr. {doc.name} {doc.is_available ? '(Available)' : '(On Break)'}
+                  </option>
+                ))}
+              </select>
+
               <input
                 className="input"
                 placeholder="Chief Complaint / Notes"
@@ -668,9 +704,9 @@ export default function ReceptionistDashboard() {
               onChange={handlePatientSearch}
               className="input mb-3"
             />
-            {foundPatients.length > 0 ? (
+            {displayedPatients.length > 0 ? (
               <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
-                {foundPatients.map(p => (
+                {displayedPatients.map(p => (
                   <div
                     key={p.id}
                     onClick={() => handleViewPatientHistory(p)}
@@ -686,11 +722,9 @@ export default function ReceptionistDashboard() {
                   </div>
                 ))}
               </div>
-            ) : searchQuery.trim().length >= 2 ? (
-              <p className="text-xs text-slate-400 text-center py-4">No matching records found.</p>
             ) : (
-              <p className="text-[11px] text-slate-400 text-center py-2">
-                Type 2+ letters to search patient directory
+              <p className="text-xs text-slate-400 text-center py-4">
+                {searchQuery.trim() ? 'No matching records found.' : 'No patients registered.'}
               </p>
             )}
           </div>
@@ -725,6 +759,8 @@ export default function ReceptionistDashboard() {
             onGenerateBill={handleOpenBilling}
             paidTokenIds={paidTokenIds}
             unpaidTokenIds={unpaidTokenIds}
+            doctors={doctorsList}
+            onAssignDoctor={handleAssignDoctor}
           />
         </div>
 
