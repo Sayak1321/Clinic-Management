@@ -67,7 +67,7 @@ export default function ReceptionistDashboard() {
     try {
       const { data, error } = await supabase
         .from('tokens')
-        .select('*, patient:patients(*), doctor:profiles(*)')
+        .select('*, patient:patients(*), doctor:profiles!doctor(*)')
         .eq('date', today)
         .order('token_number');
       if (error) throw error;
@@ -200,7 +200,8 @@ export default function ReceptionistDashboard() {
       dob: patient.dob ? patient.dob.split('T')[0] : '',
       address: patient.address || '',
       blood_group: patient.blood_group || '',
-      chief_complaint: form.chief_complaint
+      chief_complaint: form.chief_complaint,
+      doctor: form.doctor
     });
     setSuggestions([]);
     setShowSuggestions(false);
@@ -976,7 +977,7 @@ export default function ReceptionistDashboard() {
               {patientHistoryList.map((rx) => (
                 <div key={rx.id} className="p-4 rounded-lg bg-surface-50 border border-surface-200">
                   <div className="flex justify-between items-start mb-2 border-b border-surface-100 pb-1.5 text-xs text-slate-500">
-                    <span>Date: <span className="font-semibold text-slate-700">{new Date(rx.created).toLocaleDateString('en-IN')}</span></span>
+                    <span>Date: <span className="font-semibold text-slate-700">{new Date(rx.created_at || rx.created).toLocaleDateString('en-IN')}</span></span>
                     <span>Doctor: <span className="font-semibold text-slate-700">Dr. {rx.expand?.doctor?.name || 'Unknown'}</span></span>
                   </div>
                   {rx.diagnosis && (
