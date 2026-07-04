@@ -10,6 +10,12 @@ export default {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
+        canvas: 'var(--bg-canvas)',
+        card: 'var(--bg-card)',
+        accent: 'var(--color-accent)',
+        textHigh: 'var(--color-text-high)',
+        textMuted: 'var(--color-text-muted)',
+        borderMuted: 'var(--color-border)',
         primary: {
           50:  '#f0fdfa',
           100: '#ccfbf1',
