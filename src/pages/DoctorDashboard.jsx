@@ -569,7 +569,7 @@ export default function DoctorDashboard() {
     if (tag === 'bold')   replacement = `**${selected || 'bold text'}**`;
     else if (tag === 'italic') replacement = `*${selected || 'italic text'}*`;
     else if (tag === 'list')   replacement = `\n- ${selected || 'list item'}`;
-    else if (tag === 'vitals') replacement = `\n- Temp: 98.6°F\n- Pulse: ${72 + pulseWobble}bpm\n- BP: ${118 + pulseWobble}/${76 + Math.floor(pulseWobble/2)} mmHg`;
+    else if (tag === 'vitals') replacement = `\n- Temp: 98.6°F`;
     const newText = text.substring(0, start) + replacement + text.substring(end);
     setRx(prev => ({ ...prev, report: newText }));
     setTimeout(() => {
@@ -651,10 +651,7 @@ export default function DoctorDashboard() {
     );
   }
 
-  // --- Dynamic sparkline values ---
-  const activeHeartRate  = active ? (74  + (active.token_number % 8)  + pulseWobble) : 72;
-  const activeSystolic   = active ? (118 + (active.token_number % 12) + pulseWobble) : 120;
-  const activeDiastolic  = active ? (76  + (active.token_number % 6)  + Math.floor(pulseWobble/2)) : 80;
+
 
   // --- Stat cards config ---
   const statCards = [
@@ -1054,47 +1051,7 @@ export default function DoctorDashboard() {
                   </div>
                 </div>
 
-                {/* Fix #8: Taller vitals sparkline waveforms with glow */}
-                <div className="grid grid-cols-2 gap-4">
-                  {/* Heart Rate ECG */}
-                  <div className="rounded-xl p-4 flex flex-col justify-between"
-                    style={{ backgroundColor:'rgba(11,15,25,0.5)', border:'1px solid var(--color-border)' }}>
-                    <div>
-                      <div className="flex justify-between items-center text-[9px] uppercase font-extrabold tracking-wider" style={{ color:'var(--color-text-muted)' }}>
-                        <span>Heart Rate</span>
-                        <span className="animate-pulse" style={{ color:'#ef4444' }}>ECG Live</span>
-                      </div>
-                      <p className="mt-1 font-black" style={{ color:'var(--color-text-high)', fontSize:'1.4rem' }}>
-                        {activeHeartRate} <span className="text-xs font-normal" style={{ color:'var(--color-text-muted)' }}>bpm</span>
-                      </p>
-                    </div>
-                    {/* Fix #8: taller + glow ECG */}
-                    <svg className="w-full mt-2" style={{ height:'2.5rem' }} viewBox="0 0 100 30" preserveAspectRatio="none">
-                      <path className="ecg-path"
-                        d="M0 15 L20 15 L23 8 L26 22 L29 15 L45 15 L48 8 L51 22 L54 15 L70 15 L73 0 L76 30 L79 15 L100 15"
-                        fill="none" stroke="#ef4444" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
 
-                  {/* Blood Pressure */}
-                  <div className="rounded-xl p-4 flex flex-col justify-between"
-                    style={{ backgroundColor:'rgba(11,15,25,0.5)', border:'1px solid var(--color-border)' }}>
-                    <div>
-                      <div className="flex justify-between items-center text-[9px] uppercase font-extrabold tracking-wider" style={{ color:'var(--color-text-muted)' }}>
-                        <span>Blood Pressure</span>
-                        <span style={{ color:'var(--color-accent)' }}>SYS/DIA</span>
-                      </div>
-                      <p className="mt-1 font-black" style={{ color:'var(--color-text-high)', fontSize:'1.4rem' }}>
-                        {activeSystolic}/{activeDiastolic} <span className="text-xs font-normal" style={{ color:'var(--color-text-muted)' }}>mmHg</span>
-                      </p>
-                    </div>
-                    <svg className="w-full mt-2" style={{ height:'2.5rem' }} viewBox="0 0 100 30" preserveAspectRatio="none">
-                      <path className="bp-path"
-                        d="M0 15 Q10 5, 20 15 T40 15 T60 15 T80 15 T100 15"
-                        fill="none" stroke="var(--color-accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </div>
-                </div>
 
                 {/* Medication History */}
                 <div className="rounded-xl p-4" style={{ backgroundColor:'rgba(11,15,25,0.5)', border:'1px solid var(--color-border)' }}>
