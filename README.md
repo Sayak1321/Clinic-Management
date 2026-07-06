@@ -1,8 +1,22 @@
 # CliniQ — Clinic Queue & EMR Management System
 
-CliniQ is a modern, high-performance, and responsive clinic management web application built with **React**, **Vite**, **Tailwind CSS**, and **Supabase**. It provides a seamless selection portal linking two major workflows: the **Receptionist Portal** (for patient intake, queue card assignment, and billing) and the **Doctor Portal** (for managing the consultation queue, recording diagnoses, writing prescriptions, downloading A5 PDF slips, and tracking daily caseload summaries).
+CliniQ is a premium, minimalist, and responsive clinic management web application built with **React**, **Vite**, **Tailwind CSS**, and **Supabase**. It provides a high-utility, modern interface featuring a stunning **Deep Obsidian** theme (with support for full Light/Dark theme toggle syncing).
 
-The application is tailored for quick deployments using guest access credentials—allowing instant login bypass for both receptionist and doctor portals.
+The system seamlessly links two major clinical workflows: the **Receptionist Portal** (intake, queue, billing, duplicates check) and the **Doctor Portal** (consultation queue, digital prescription generator, drug interaction warnings, and A5 slip downloads).
+
+---
+
+## 📸 Live Web App Screenshots
+
+### Receptionist Dashboard
+| Dark Mode | Light Mode |
+|:---:|:---:|
+| ![Receptionist Dark](./public/receptionist_dashboard_dark.png) | ![Receptionist Light](./public/receptionist_dashboard_light.png) |
+
+### Doctor Dashboard
+| Dark Mode | Light Mode |
+|:---:|:---:|
+| ![Doctor Dark](./public/doctor_dashboard_dark.png) | ![Doctor Light](./public/doctor_dashboard_light.png) |
 
 ---
 
@@ -66,19 +80,28 @@ alter publication supabase_realtime add table public.tokens, public.patients, pu
 
 ---
 
-## 📁 Key Features
+## 📁 Key Features & Clinical Safety Controls
 
 ### 📋 Receptionist Portal
-* **Walk-in Registration:** Quick intake form with patient name, phone autocomplete, DOB, blood group, address, and primary complaint.
-* **Smart Token Queue:** Auto-generates unique daily queue numbers. Includes inline controls on token cards to assign or reassign doctors on the fly.
-* **Unified Billing System:** Add predefined presets (Consultation Fee, dressing, dressing charges, etc.) or custom entries, calculate totals, print thermal invoice bills, and process status tracking (Paid/Unpaid badge updates).
-* **Patient Records Lookup:** Search by name or phone and look up past visits, medical logs, and prescription history.
+* **Walk-in Registration:** Intake form capturing patient details, DOB, blood group, address, and complaint, with **autocomplete suggestions** for returning phone numbers.
+* **Allergies Capture:** Intake form includes a dedicated allergies section that syncs to the patient database immediately.
+* **Duplicate Profile Warnings (Name + DOB):** Intercepts registration if another profile matches the exact Name and DOB to prevent database clutter, presenting confirmation alerts.
+* **Duplicate Invoice Prevention:** Detects if an invoice has already been generated for the patient's visit token. If so, requires acknowledgement via a warning checkbox before proceeding.
+* **Smart Token Queue:** Generates unique queue numbers with left accent status lines (`waiting`, `in_progress`, `done`) and wait estimators.
+* **Predefined Presets & Billing:** Instantly generates A5 thermal invoice PDFs using common presets or custom billing codes.
 
 ### 🩺 Doctor Portal
-* **Waiting Queue:** View the live, prioritized queue of patients assigned to you (with option to switch view to "All Queue Patients").
-* **EMR Intake Form:** Record consultation notes, diagnoses, active medications (name, dosage, duration), and a short summary/visit report.
-* **A5 PDF Prescription Slip:** Downloads a professional prescription format containing clinic branding, patient info, complaints, notes, diagnoses, medications list, and the doctor's visit report details.
-* **Integrated Caseload Tracker:** Direct dashboard summary widget displaying total assigned caseload stats (Waiting, In Progress, Completed), remarks logger, patient lists, and a `.txt` summary file exporter.
+* **Consultation Queue:** Select from waiting queue list or filter to see all patients.
+* **Interactive Allergy Alert Banner:** Displays patient allergies prominently above waveforms. Allows inline editing and saving directly to the patient's records on the fly.
+* **Drug-Drug Interaction Warnings:** Evaluates currently prescribed items and historic medication lists for critical drug interactions (e.g. *Warfarin + Aspirin*, *Lisinopril + Spironolactone*, *Sildenafil + Nitroglycerin*), rendering dynamic warning boxes.
+* **SOAP Encounters & Templates:** Rapidly write clinical notes using template hotkeys like bold, lists, and quick-add vitals (e.g. Temperature).
+* **Caseload Reports:** Download caseload logs, status files, and `.txt` summary reports.
+* **Prescription Slip Downloads:** Prints styled patient cards with detailed complaints, diagnoses, active medication guidelines, and clinical notes.
+
+### 🛡️ App-wide Data Integrity Controls
+* **Unsaved Changes Warning:** Prompts a browser exit alert (`beforeunload`) if the user tries to navigate away with unsaved SOAP details or walk-in registration details.
+* **Automatic Draft Recovery:** Encounters and registration forms are continuously auto-saved to `localStorage` to survive accidental tab closures. Auto-recovered drafts are cleared upon successful submission.
+* **Resilient Data Parsing:** Robust JSON check overrides prevent client-side parsing crashes on empty historical prescriptions.
 
 ---
 
