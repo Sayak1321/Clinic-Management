@@ -56,8 +56,43 @@ export default function ReceptionistDashboard() {
   };
 
   // --- State Variables ---
-  const [form, setForm] = useState({ name: '', phone: '', dob: '', address: '', blood_group: '', chief_complaint: '', doctor: '' });
+  const [form, setForm] = useState(() => {
+    const draft = localStorage.getItem('cliniq_reg_draft');
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        return {
+          name: parsed.name || '',
+          phone: parsed.phone || '',
+          dob: parsed.dob || '',
+          address: parsed.address || '',
+          blood_group: parsed.blood_group || '',
+          allergies: parsed.allergies || '',
+          chief_complaint: parsed.chief_complaint || '',
+          doctor: parsed.doctor || ''
+        };
+      } catch {}
+    }
+    return { name: '', phone: '', dob: '', address: '', blood_group: '', allergies: '', chief_complaint: '', doctor: '' };
+  });
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('cliniq_reg_draft', JSON.stringify(form));
+  }, [form]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      const isDirty = form.name || form.phone || form.dob || form.address || form.chief_complaint;
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved walk-in registration details. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [form]);
   
   // Autocomplete suggestions
   const [suggestions, setSuggestions] = useState([]);
@@ -75,6 +110,7 @@ export default function ReceptionistDashboard() {
   const [activeTokenToBill, setActiveTokenToBill] = useState(null);
   const [billItems, setBillItems] = useState([]);
   const [billTotal, setBillTotal] = useState(0);
+  const [confirmDuplicateBillChecked, setConfirmDuplicateBillChecked] = useState(false);
 
   // Search patients & History State
   const [searchQuery, setSearchQuery] = useState('');
@@ -85,6 +121,8 @@ export default function ReceptionistDashboard() {
   // Confirmations
   const [confirmRevisitOpen, setConfirmRevisitOpen] = useState(false);
   const [revisitPatientData, setRevisitPatientData] = useState(null);
+  const [confirmDuplicateOpen, setConfirmDuplicateOpen] = useState(false);
+  const [duplicatePatientData, setDuplicatePatientData] = useState(null);
 
   const phoneInputRef = useRef(null);
 
@@ -235,6 +273,7 @@ export default function ReceptionistDashboard() {
       dob: patient.dob ? patient.dob.split('T')[0] : '',
       address: patient.address || '',
       blood_group: patient.blood_group || '',
+      allergies: patient.allergies || '',
       chief_complaint: form.chief_complaint,
       doctor: form.doctor
     });
@@ -266,7 +305,21 @@ export default function ReceptionistDashboard() {
 
     setSubmitting(true);
     try {
-      // 1. Upsert patient by phone number
+      // 1. Check for Name + DOB duplicate (with different phone)
+      const duplicateByNameDob = allPatients.find(p => 
+        p.name.toLowerCase().trim() === form.name.toLowerCase().trim() && 
+        (p.dob ? p.dob.split('T')[0] : '') === form.dob &&
+        p.phone !== form.phone
+      );
+
+      if (duplicateByNameDob && !confirmDuplicateOpen) {
+        setDuplicatePatientData(duplicateByNameDob);
+        setConfirmDuplicateOpen(true);
+        setSubmitting(false);
+        return;
+      }
+
+      // 2. Upsert patient by phone number
       let patient;
       const { data: existing, error: searchError } = await supabase
         .from('patients')
@@ -278,14 +331,15 @@ export default function ReceptionistDashboard() {
       if (existing && existing.length > 0) {
         patient = existing[0];
         // Keep their records updated if fields changed
-        if (form.name !== patient.name || form.dob !== (patient.dob ? patient.dob : '') || form.address !== patient.address || form.blood_group !== patient.blood_group) {
+        if (form.name !== patient.name || form.dob !== (patient.dob ? patient.dob : '') || form.address !== patient.address || form.blood_group !== patient.blood_group || form.allergies !== patient.allergies) {
           const { data: updated, error: updateError } = await supabase
             .from('patients')
             .update({
               name: form.name,
               dob: form.dob || null,
               address: form.address,
-              blood_group: form.blood_group
+              blood_group: form.blood_group,
+              allergies: form.allergies
             })
             .eq('id', patient.id)
             .select()
@@ -302,6 +356,7 @@ export default function ReceptionistDashboard() {
             dob: form.dob || null,
             address: form.address,
             blood_group: form.blood_group,
+            allergies: form.allergies
           })
           .select()
           .single();
@@ -366,10 +421,13 @@ export default function ReceptionistDashboard() {
 
       addToast(`Token #${nextTokenNum} successfully assigned to ${patient.name}!`);
       
-      // Reset form
-      setForm({ name: '', phone: '', dob: '', address: '', blood_group: '', chief_complaint: '', doctor: '' });
+      // Reset form & clear draft
+      setForm({ name: '', phone: '', dob: '', address: '', blood_group: '', allergies: '', chief_complaint: '', doctor: '' });
+      localStorage.removeItem('cliniq_reg_draft');
       setConfirmRevisitOpen(false);
       setRevisitPatientData(null);
+      setConfirmDuplicateOpen(false);
+      setDuplicatePatientData(null);
     } catch (err) {
       console.error(err);
       addToast('Failed to assign token.', 'error');
@@ -427,6 +485,7 @@ export default function ReceptionistDashboard() {
   // --- Billing Editor (P0 7.3) ---
   const handleOpenBilling = (token) => {
     setActiveTokenToBill(token);
+    setConfirmDuplicateBillChecked(false);
     // Initialize with consultation fee
     const initialItems = [{ description: 'Consultation Fee', amount: settings.default_consultation_fee || 500 }];
     setBillItems(initialItems);
@@ -464,6 +523,13 @@ export default function ReceptionistDashboard() {
   const handleCreateBill = async (e) => {
     e.preventDefault();
     if (!activeTokenToBill) return;
+
+    // Double-Billing Prevention
+    const alreadyBilled = bills.some(b => b.token === activeTokenToBill.id);
+    if (alreadyBilled && !confirmDuplicateBillChecked) {
+      addToast('An invoice has already been generated for this visit. Please confirm to proceed.', 'warning');
+      return;
+    }
 
     try {
       // Get doctor prescription if available
@@ -749,6 +815,13 @@ export default function ReceptionistDashboard() {
                 onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
               />
 
+              <input
+                className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans"
+                placeholder="Allergies (e.g. Penicillin, Peanuts)"
+                value={form.allergies}
+                onChange={e => setForm(f => ({ ...f, allergies: e.target.value }))}
+              />
+
               <select
                 className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans text-xs cursor-pointer"
                 value={form.doctor}
@@ -966,6 +1039,45 @@ export default function ReceptionistDashboard() {
         }}
       />
 
+      {/* Duplicate Profile Warning Dialog */}
+      <ConfirmDialog
+        isOpen={confirmDuplicateOpen}
+        title="Duplicate Patient Profile Warning"
+        message={`Warning: A patient named "${duplicatePatientData?.name}" with DOB "${duplicatePatientData?.dob ? duplicatePatientData.dob.split('T')[0] : ''}" is already registered under phone ${duplicatePatientData?.phone}. Are you sure you want to create a new duplicate profile?`}
+        onConfirm={async () => {
+          if (duplicatePatientData) {
+            try {
+              setSubmitting(true);
+              const { data: created, error: createError } = await supabase
+                .from('patients')
+                .insert({
+                  name: form.name,
+                  phone: form.phone,
+                  dob: form.dob || null,
+                  address: form.address,
+                  blood_group: form.blood_group,
+                  allergies: form.allergies
+                })
+                .select()
+                .single();
+              if (createError) throw createError;
+              await createTokenForPatient(created);
+            } catch (err) {
+              console.error(err);
+              addToast('Failed to create duplicate patient profile.', 'error');
+            } finally {
+              setSubmitting(false);
+              setConfirmDuplicateOpen(false);
+              setDuplicatePatientData(null);
+            }
+          }
+        }}
+        onCancel={() => {
+          setConfirmDuplicateOpen(false);
+          setDuplicatePatientData(null);
+        }}
+      />
+
       {/* Bill Editor Overlay (Modal Form) */}
       {activeTokenToBill && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -1057,6 +1169,31 @@ export default function ReceptionistDashboard() {
                 <span className="text-xl" style={{ color: 'var(--color-accent)' }}>₹{billTotal}</span>
               </div>
 
+              {/* Double Invoicing Confirmation Checkbox */}
+              {bills.some(b => b.token === activeTokenToBill.id) && (
+                <div className="rounded-xl p-3 text-xs flex flex-col gap-2 border animate-fadeIn"
+                  style={{ backgroundColor: 'rgba(245,158,11,0.05)', borderColor: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}>
+                  <div className="flex items-center gap-2 font-bold text-[10px] uppercase tracking-wider text-amber-500">
+                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    Duplicate Invoice Acknowledgment Required
+                  </div>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>
+                    An invoice has already been created for this visit. Creating another will duplicate the charges.
+                  </p>
+                  <label className="flex items-center gap-2 cursor-pointer mt-1 font-semibold text-textHigh">
+                    <input
+                      type="checkbox"
+                      checked={confirmDuplicateBillChecked}
+                      onChange={e => setConfirmDuplicateBillChecked(e.target.checked)}
+                      className="rounded accent-amber-500 cursor-pointer"
+                    />
+                    I confirm I want to generate a duplicate invoice for this patient.
+                  </label>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-3 border-t border-borderMuted/30">
                 <button
                   type="button"
@@ -1124,7 +1261,7 @@ export default function ReceptionistDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {(typeof rx.medicines === 'string' ? JSON.parse(rx.medicines) : rx.medicines).map((m, idx) => (
+                          {(rx.medicines ? (typeof rx.medicines === 'string' ? JSON.parse(rx.medicines) : rx.medicines) : []).map((m, idx) => (
                             <tr key={idx} className="border-b last:border-0" style={{ borderColor: 'rgba(30,41,59,0.3)' }}>
                               <td className="p-2 font-semibold">{m.name}</td>
                               <td className="p-2 font-mono" style={{ color: 'var(--color-text-muted)' }}>{m.dosage}</td>

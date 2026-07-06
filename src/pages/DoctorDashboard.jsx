@@ -24,6 +24,14 @@ const ICD10_CODES = [
   { code: 'R05.9',  desc: 'Cough, unspecified' },
 ];
 
+const DRUG_INTERACTIONS = [
+  { drugA: 'aspirin', drugB: 'warfarin', severity: 'Critical', message: 'Increased risk of severe gastrointestinal bleeding.' },
+  { drugA: 'ibuprofen', drugB: 'aspirin', severity: 'High', message: 'Ibuprofen may decrease the cardioprotective effect of low-dose aspirin.' },
+  { drugA: 'lisinopril', drugB: 'spironolactone', severity: 'Critical', message: 'Risk of severe hyperkalemia (high potassium levels).' },
+  { drugA: 'sildenafil', drugB: 'nitroglycerin', severity: 'Fatal', message: 'Co-administration can cause severe, potentially fatal hypotension (low blood pressure).' },
+  { drugA: 'warfarin', drugB: 'amiodarone', severity: 'High', message: 'Amiodarone increases warfarin concentration, enhancing anticoagulant effect and bleeding risk.' }
+];
+
 // Fix #9: robust date formatter that handles all ISO date strings
 const formatDate = (dateStr) => {
   if (!dateStr) return 'N/A';
@@ -68,6 +76,10 @@ export default function DoctorDashboard() {
   const [tokens, setTokens] = useState([]);
   const [active, setActive] = useState(null);
   const [filterMode, setFilterMode] = useState('my');
+
+  // --- Allergies States ---
+  const [isEditingAllergies, setIsEditingAllergies] = useState(false);
+  const [patientAllergies, setPatientAllergies] = useState('');
 
   // --- Prescription Form State ---
   const [rx, setRx] = useState(EMPTY_RX);
@@ -120,6 +132,85 @@ export default function DoctorDashboard() {
     }, 4000);
     return () => clearInterval(interval);
   }, []);
+
+  // --- Unsaved Changes & Auto Draft Recovery ---
+  useEffect(() => {
+    const handleBeforeUnload = (e) => {
+      const isDirty = rx.diagnosis || rx.notes || rx.report || rx.medicines.some(m => m.name);
+      if (active && isDirty) {
+        e.preventDefault();
+        e.returnValue = 'You have unsaved clinical encounter remarks. Are you sure you want to leave?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [rx, active]);
+
+  useEffect(() => {
+    if (active) {
+      localStorage.setItem(`cliniq_rx_draft_${active.id}`, JSON.stringify(rx));
+    }
+  }, [rx, active]);
+
+  const handleSaveAllergies = async () => {
+    if (!active) return;
+    try {
+      const { error } = await supabase
+        .from('patients')
+        .update({ allergies: patientAllergies })
+        .eq('id', active.expand.patient.id);
+      if (error) throw error;
+      
+      active.expand.patient.allergies = patientAllergies;
+      setIsEditingAllergies(false);
+      addToast('Patient allergy records updated.', 'success');
+      fetchTokens();
+    } catch (err) {
+      console.error(err);
+      addToast('Failed to update allergy records.', 'error');
+    }
+  };
+
+  const getDrugInteractions = () => {
+    const currentMeds = rx.medicines.map(m => m.name.toLowerCase().trim()).filter(Boolean);
+    const warnings = [];
+
+    for (let i = 0; i < currentMeds.length; i++) {
+      for (let j = i + 1; j < currentMeds.length; j++) {
+        const medA = currentMeds[i];
+        const medB = currentMeds[j];
+        const match = DRUG_INTERACTIONS.find(inter => 
+          (inter.drugA === medA && inter.drugB === medB) || 
+          (inter.drugA === medB && inter.drugB === medA)
+        );
+        if (match) {
+          warnings.push({ type: 'Current Prescriptions', medA: currentMeds[i], medB: currentMeds[j], ...match });
+        }
+      }
+    }
+
+    if (history.length > 0) {
+      const lastRx = history[0];
+      const historyMedsRaw = lastRx.medicines ? (typeof lastRx.medicines === 'string' ? JSON.parse(lastRx.medicines) : lastRx.medicines) : [];
+      const historyMeds = historyMedsRaw.map(m => m.name.toLowerCase().trim()).filter(Boolean);
+
+      for (const medCurr of currentMeds) {
+        for (const medHist of historyMeds) {
+          if (medCurr === medHist) continue;
+          const match = DRUG_INTERACTIONS.find(inter => 
+            (inter.drugA === medCurr && inter.drugB === medHist) || 
+            (inter.drugA === medHist && inter.drugB === medCurr)
+          );
+          if (match) {
+            warnings.push({ type: 'Active Medical History', medA: medCurr, medB: medHist, ...match });
+          }
+        }
+      }
+    }
+
+    return warnings;
+  };
 
   // --- Fetching Queue Tokens ---
   const fetchTokens = useCallback(async () => {
@@ -344,7 +435,20 @@ export default function DoctorDashboard() {
   const selectToken = async (token) => {
     setJustSavedRx(null);
     setActive(token);
-    setRx({ diagnosis: '', medicines: [{ name: '', dosage: '', duration: '' }], notes: '', report: '' });
+    
+    // Auto Recovery of Draft SOAP and prescriptions
+    const draft = localStorage.getItem(`cliniq_rx_draft_${token.id}`);
+    if (draft) {
+      try {
+        setRx(JSON.parse(draft));
+        addToast(`Restored unsaved draft for Token #${token.token_number}`, 'info');
+      } catch {
+        setRx({ diagnosis: '', medicines: [{ name: '', dosage: '', duration: '' }], notes: '', report: '' });
+      }
+    } else {
+      setRx({ diagnosis: '', medicines: [{ name: '', dosage: '', duration: '' }], notes: '', report: '' });
+    }
+    
     setHistoryPatient(token.expand?.patient || null);
     if (token.status === 'waiting') {
       try {
@@ -410,6 +514,9 @@ export default function DoctorDashboard() {
         .update({ status: 'done' })
         .eq('id', active.id);
       if (tokenError) throw tokenError;
+
+      // Clean up localStorage draft
+      localStorage.removeItem(`cliniq_rx_draft_${active.id}`);
 
       addToast('Prescription saved and token marked done.', 'success');
       setJustSavedRx({ token: active, patient: active.expand.patient, prescription: savedPresc, doctor: user });
@@ -895,17 +1002,54 @@ export default function DoctorDashboard() {
                     </span>
                   </div>
 
-                  {/* Allergy Alert Banner — Fix #3: bounded SVG icon */}
-                  <div className="rounded-xl p-3 text-xs mt-4 flex items-start gap-2.5"
+                  {/* Allergy Alert Banner — With Edit capability */}
+                  <div className="rounded-xl p-3 text-xs mt-4 flex items-start gap-2.5 relative"
                     style={{ backgroundColor:'rgba(245,158,11,0.05)', border:'1px solid rgba(245,158,11,0.1)', color:'#f59e0b' }}>
                     <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" style={{ color:'#fbbf24' }}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
-                    <div>
-                      <span className="font-bold block mb-0.5 uppercase tracking-wide text-[10px]">Clinical Allergy Warning</span>
-                      <span className="text-[11px]" style={{ color:'var(--color-text-muted)' }}>
-                        {active.expand?.patient?.allergies || 'No known medication allergies reported. Always check history files before advising prescription antibiotics.'}
-                      </span>
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold block mb-0.5 uppercase tracking-wide text-[10px]">Clinical Allergy Warning</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isEditingAllergies) {
+                              handleSaveAllergies();
+                            } else {
+                              setPatientAllergies(active.expand?.patient?.allergies || '');
+                              setIsEditingAllergies(true);
+                            }
+                          }}
+                          className="text-[9px] hover:underline font-bold"
+                          style={{ color: 'var(--color-accent)' }}
+                        >
+                          {isEditingAllergies ? 'Save ✓' : 'Edit ✎'}
+                        </button>
+                      </div>
+                      {isEditingAllergies ? (
+                        <div className="flex gap-2 mt-1.5">
+                          <input
+                            type="text"
+                            value={patientAllergies}
+                            onChange={e => setPatientAllergies(e.target.value)}
+                            placeholder="Enter patient allergies..."
+                            className="bg-canvas border border-borderMuted text-textHigh rounded-md px-2 py-1 text-[10px] flex-1 focus:outline-none focus:border-accent"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setIsEditingAllergies(false)}
+                            className="text-[9px] hover:underline"
+                            style={{ color: 'var(--color-text-muted)' }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[11px]" style={{ color:'var(--color-text-muted)' }}>
+                          {active.expand?.patient?.allergies || 'No known medication allergies reported. Always check history files before advising prescription antibiotics.'}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -958,7 +1102,7 @@ export default function DoctorDashboard() {
                   <div className="text-[11px] overflow-y-auto max-h-[120px] scrollbar-thin">
                     {history.length > 0 ? (() => {
                       const lastRx = history[0];
-                      const lastMeds = typeof lastRx.medicines === 'string' ? JSON.parse(lastRx.medicines) : lastRx.medicines;
+                      const lastMeds = lastRx.medicines ? (typeof lastRx.medicines === 'string' ? JSON.parse(lastRx.medicines) : lastRx.medicines) : [];
                       return (
                         <div className="space-y-1.5">
                           <p className="text-[9px] font-bold" style={{ color:'var(--color-accent)' }}>LAST VISIT ({formatDate(lastRx.created_at)}):</p>
@@ -990,7 +1134,7 @@ export default function DoctorDashboard() {
                     <div style={{ backgroundColor:'rgba(11,15,25,0.2)' }}>
                       {history.map((h, idx) => {
                         const isOpen = openHistoryIdx === idx;
-                        const medicines = typeof h.medicines === 'string' ? JSON.parse(h.medicines) : h.medicines;
+                        const medicines = h.medicines ? (typeof h.medicines === 'string' ? JSON.parse(h.medicines) : h.medicines) : [];
                         return (
                           <div key={h.id} className="text-xs" style={{ borderTop: idx > 0 ? '1px solid rgba(30,41,59,0.6)' : 'none' }}>
                             <button type="button" onClick={() => setOpenHistoryIdx(isOpen ? null : idx)}
@@ -1172,6 +1316,37 @@ export default function DoctorDashboard() {
                 </div>
 
                 <div className="flex-1 flex flex-col gap-3.5 overflow-y-auto pr-1 scrollbar-thin">
+
+                  {/* Drug Interaction Warning Panel */}
+                  {(() => {
+                    const warnings = getDrugInteractions();
+                    if (warnings.length === 0) return null;
+                    return (
+                      <div className="rounded-xl p-3 text-xs mb-2 flex flex-col gap-1.5 border animate-fadeIn"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.08)', borderColor: 'rgba(239,68,68,0.25)', color: '#f87171' }}>
+                        <div className="flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider text-red-400">
+                          <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                          </svg>
+                          Critical Drug Interaction Alert ({warnings.length})
+                        </div>
+                        <div className="space-y-2 mt-1">
+                          {warnings.map((w, idx) => (
+                            <div key={idx} className="pb-1.5 border-b last:border-0" style={{ borderColor: 'rgba(239,68,68,0.15)' }}>
+                              <p className="font-semibold text-[10px]">
+                                <span className="uppercase text-[9px] px-1 py-0.2 rounded font-black mr-1" 
+                                  style={{ backgroundColor: w.severity === 'Fatal' ? '#b91c1c' : '#dc2626', color: '#ffffff' }}>
+                                  {w.severity}
+                                </span>
+                                <span className="capitalize">{w.medA}</span> + <span className="capitalize">{w.medB}</span> ({w.type})
+                              </p>
+                              <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{w.message}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Fix #11: ICD-10 lookup with accent prefix icon */}
                   <div>
