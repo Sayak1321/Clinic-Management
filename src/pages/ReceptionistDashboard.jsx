@@ -7,6 +7,18 @@ import TokenQueue from '../components/TokenQueue';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { generateBillPDF } from '../lib/pdfBill';
 
+// Format standard date formatting consistently
+const formatDate = (dateStr) => {
+  if (!dateStr) return 'N/A';
+  try {
+    return new Date(dateStr).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric'
+    });
+  } catch {
+    return dateStr;
+  }
+};
+
 export default function ReceptionistDashboard() {
   console.log('[ReceptionistDashboard] rendering');
   const { user: authUser, logout } = useAuth();
@@ -19,6 +31,29 @@ export default function ReceptionistDashboard() {
   const { settings } = useSettings();
   const { addToast } = useToast();
   const today = new Date().toISOString().split('T')[0];
+
+  // --- Theme State ---
+  const [isLightMode, setIsLightMode] = useState(() => {
+    return localStorage.getItem('theme') === 'light';
+  });
+
+  useEffect(() => {
+    if (isLightMode) {
+      document.documentElement.classList.add('light');
+      localStorage.setItem('theme', 'light');
+    } else {
+      document.documentElement.classList.remove('light');
+      localStorage.setItem('theme', 'dark');
+    }
+  }, [isLightMode]);
+
+  const [themeToggleRotating, setThemeToggleRotating] = useState(false);
+
+  const handleThemeToggle = () => {
+    setThemeToggleRotating(true);
+    setIsLightMode(v => !v);
+    setTimeout(() => setThemeToggleRotating(false), 400);
+  };
 
   // --- State Variables ---
   const [form, setForm] = useState({ name: '', phone: '', dob: '', address: '', blood_group: '', chief_complaint: '', doctor: '' });
@@ -553,48 +588,88 @@ export default function ReceptionistDashboard() {
   const unpaidTokenIds = new Set(bills.filter(b => !b.paid).map(b => b.token));
 
   return (
-    <div className="min-h-screen bg-surface-100 flex flex-col font-sans">
-      {/* Header */}
-      <header className="bg-white border-b border-surface-200 px-6 py-3 flex items-center justify-between shadow-sm z-10">
-        <div className="flex items-center gap-2">
-          <svg className="w-6 h-6 text-primary-700" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-          </svg>
-          <span className="font-bold text-lg text-slate-800">{settings.clinic_name}</span>
-          <span className="text-slate-400">|</span>
-          <h1 className="text-slate-600 text-sm font-normal">Receptionist Portal ({user?.name})</h1>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 py-1 px-3 rounded-full">
-            <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
-            <span className="font-medium text-slate-600">SSE Active</span>
+    <div
+      className="min-h-screen flex flex-col font-sans antialiased overflow-hidden"
+      style={{ backgroundColor: 'var(--bg-canvas)', color: 'var(--color-text-high)', transition: 'background-color 0.3s, color 0.3s' }}
+    >
+      {/* Header — Modernized Header with Shimmer, Theme Toggle and SSE Indicator */}
+      <header className="dashboard-header h-16 flex items-center justify-between px-6 shrink-0 z-20">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center font-black text-lg shadow-inner"
+            style={{ backgroundColor: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)', color: 'var(--color-accent)' }}>
+            Q
           </div>
-          <button onClick={logout} className="btn-secondary text-xs py-1 px-3 border border-slate-200 hover:bg-slate-100">
+          <div>
+            <span className="font-bold text-sm tracking-wide block" style={{ color: 'var(--color-text-high)' }}>{settings.clinic_name || 'CLINIQ'}</span>
+            <span className="text-[10px] block" style={{ color: 'var(--color-text-muted)' }}>Reception Portal · {user.name}</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {/* Theme toggle matching doctor portal */}
+          <button
+            type="button"
+            onClick={handleThemeToggle}
+            className="theme-toggle-btn w-9 h-9 rounded-lg flex items-center justify-center"
+            style={{
+              border: '1px solid var(--color-border)',
+              backgroundColor: 'var(--bg-card)',
+              color: 'var(--color-text-muted)',
+              transform: themeToggleRotating ? 'scale(0.88) rotate(180deg)' : 'scale(1) rotate(0deg)',
+            }}
+            title="Toggle Light/Dark Theme"
+          >
+            {isLightMode ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m12.728 0l-.707-.707M6.343 6.343l-.707-.707M12 7a5 5 0 100 10 5 5 0 000-10z" />
+              </svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+              </svg>
+            )}
+          </button>
+
+          {/* Sync indicator */}
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full relative flex">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 bg-emerald-400" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+            </span>
+            <span className="text-[10px] font-semibold tracking-wider uppercase hidden sm:inline" style={{ color: 'var(--color-text-muted)' }}>
+              Live Sync
+            </span>
+          </div>
+
+          <button onClick={logout}
+            className="text-xs font-semibold px-4 py-1.5 rounded-full transition-all border text-red-400 bg-red-500/5 hover:border-red-500/30">
             Sign out
           </button>
         </div>
       </header>
 
-      {/* Main Grid Layout */}
-      <div className="max-w-7xl w-full mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1">
+      {/* Main Grid Layout — Responsive Grid spanning 12 cols */}
+      <div className="max-w-7xl w-full mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 overflow-y-auto">
         
         {/* Left Column (Forms & Search) - Span 4 */}
         <div className="lg:col-span-4 flex flex-col gap-6">
           
           {/* Register Patient Card */}
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-slate-800">Register Walk-in</h2>
-              <span className="text-[10px] text-slate-400 font-semibold bg-slate-100 py-0.5 px-2 rounded-full" title="Press Ctrl+N to focus phone field">
-                Ctrl+N to Focus
+          <div className="card" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--color-border)' }}>
+            <div className="flex items-center justify-between mb-4 border-b border-borderMuted/30 pb-2">
+              <div className="section-title">Register Walk-in</div>
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider" 
+                style={{ backgroundColor: 'var(--bg-canvas)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)' }}
+                title="Press Ctrl+N to focus phone field">
+                Ctrl+N
               </span>
             </div>
 
-            <form onSubmit={handleAssignToken} className="space-y-3">
+            <form onSubmit={handleAssignToken} className="space-y-3.5">
               <div className="relative">
                 <input
                   ref={phoneInputRef}
-                  className="input"
+                  className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans"
                   placeholder="Phone number (10-digit) *"
                   value={form.phone}
                   onChange={e => {
@@ -605,26 +680,31 @@ export default function ReceptionistDashboard() {
                   required
                   autoFocus
                 />
+                
                 {/* Autocomplete Dropdown */}
                 {showSuggestions && suggestions.length > 0 && (
                   <ul
                     ref={suggestionsRef}
-                    className="absolute z-20 w-full mt-1 bg-white border border-surface-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+                    className="absolute z-20 w-full mt-1 rounded-xl shadow-2xl max-h-48 overflow-y-auto divide-y divide-borderMuted/30 animate-fadeIn"
+                    style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--color-border)' }}
                   >
                     {suggestions.map((p, idx) => (
                       <li
                         key={p.id}
                         onClick={() => handleSelectSuggestion(p)}
                         className={[
-                          'p-2.5 text-xs cursor-pointer border-b border-surface-50 last:border-0 transition-colors flex justify-between items-center',
-                          idx === highlightIndex ? 'bg-primary-50 text-primary-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                          'p-2.5 text-xs cursor-pointer transition-colors flex justify-between items-center',
+                          idx === highlightIndex ? 'bg-accent/15 text-accent font-semibold' : 'text-textHigh'
                         ].join(' ')}
+                        onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--bg-canvas)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
                       >
                         <div>
                           <p className="font-bold">{p.name}</p>
-                          <p className="text-[10px] text-slate-400">{p.phone}</p>
+                          <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{p.phone}</p>
                         </div>
-                        <span className="text-[10px] bg-primary-100 text-primary-700 font-bold px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full"
+                          style={{ color: 'var(--color-accent)', backgroundColor: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)' }}>
                           Select
                         </span>
                       </li>
@@ -634,7 +714,7 @@ export default function ReceptionistDashboard() {
               </div>
 
               <input
-                className="input"
+                className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans"
                 placeholder="Patient Name *"
                 value={form.name}
                 onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -643,7 +723,7 @@ export default function ReceptionistDashboard() {
 
               <div className="grid grid-cols-2 gap-2">
                 <input
-                  className="input text-xs"
+                  className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans text-xs"
                   type="date"
                   placeholder="DOB"
                   value={form.dob}
@@ -651,102 +731,115 @@ export default function ReceptionistDashboard() {
                   title="Date of birth"
                 />
                 <select
-                  className="input text-xs"
+                  className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans text-xs cursor-pointer"
                   value={form.blood_group}
                   onChange={e => setForm(f => ({ ...f, blood_group: e.target.value }))}
                 >
-                  <option value="">Blood Group</option>
+                  <option value="" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--color-text-high)' }}>Blood Group</option>
                   {["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"].map(bg => (
-                    <option key={bg} value={bg}>{bg}</option>
+                    <option key={bg} value={bg} style={{ backgroundColor: 'var(--bg-card)', color: 'var(--color-text-high)' }}>{bg}</option>
                   ))}
                 </select>
               </div>
 
               <input
-                className="input"
+                className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans"
                 placeholder="Address"
                 value={form.address}
                 onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
               />
 
               <select
-                className="input text-xs"
+                className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans text-xs cursor-pointer"
                 value={form.doctor}
                 onChange={e => setForm(f => ({ ...f, doctor: e.target.value }))}
               >
-                <option value="">Assign Doctor (Optional)</option>
+                <option value="" style={{ backgroundColor: 'var(--bg-card)', color: 'var(--color-text-high)' }}>Assign Doctor (Optional)</option>
                 {doctorsList.map(doc => (
-                  <option key={doc.id} value={doc.id}>
+                  <option key={doc.id} value={doc.id} style={{ backgroundColor: 'var(--bg-card)', color: 'var(--color-text-high)' }}>
                     Dr. {doc.name} {doc.is_available ? '(Available)' : '(On Break)'}
                   </option>
                 ))}
               </select>
 
               <input
-                className="input"
+                className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans"
                 placeholder="Chief Complaint / Notes"
                 value={form.chief_complaint}
                 onChange={e => setForm(f => ({ ...f, chief_complaint: e.target.value }))}
               />
 
-              <button type="submit" className="btn-primary w-full mt-2" disabled={submitting}>
+              <button type="submit" className="w-full font-bold py-2.5 rounded-full transition-all text-xs flex items-center justify-center shadow-md uppercase tracking-wider mt-2"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#020617' }}
+                disabled={submitting}>
                 {submitting ? 'Assigning…' : 'Assign Token & Register'}
               </button>
             </form>
           </div>
 
           {/* Patient Lookup & History Panel */}
-          <div className="card">
-            <h2 className="text-base font-bold text-slate-800 mb-3">Lookup Patient & History</h2>
+          <div className="card" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--color-border)' }}>
+            <div className="section-title mb-3">Lookup Patient & History</div>
             <input
               type="text"
               placeholder="Search by name or phone..."
               value={searchQuery}
               onChange={handlePatientSearch}
-              className="input mb-3"
+              className="w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-xl p-2.5 text-xs focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all font-sans mb-3.5"
             />
             {displayedPatients.length > 0 ? (
-              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin">
                 {displayedPatients.map(p => (
                   <div
                     key={p.id}
                     onClick={() => handleViewPatientHistory(p)}
-                    className="flex justify-between items-center p-2 rounded-lg bg-surface-50 border border-surface-200 hover:border-primary-400 cursor-pointer transition-all"
+                    className="flex justify-between items-center p-2 rounded-xl border border-borderMuted/30 hover:border-accent/40 cursor-pointer transition-all"
+                    style={{ backgroundColor: 'rgba(11,15,25,0.3)' }}
                   >
                     <div>
-                      <p className="text-xs font-semibold text-slate-800">{p.name}</p>
-                      <p className="text-[10px] text-slate-500">{p.phone}</p>
+                      <p className="text-xs font-semibold" style={{ color: 'var(--color-text-high)' }}>{p.name}</p>
+                      <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>{p.phone}</p>
                     </div>
-                    <span className="text-[10px] text-primary-700 bg-primary-50 px-2 py-0.5 rounded font-bold">
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded"
+                      style={{ color: 'var(--color-accent)', backgroundColor: 'rgba(56,189,248,0.1)', border: '1px solid rgba(56,189,248,0.2)' }}>
                       History
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-slate-400 text-center py-4">
+              <p className="text-xs text-center py-4" style={{ color: 'var(--color-text-muted)' }}>
                 {searchQuery.trim() ? 'No matching records found.' : 'No patients registered.'}
               </p>
             )}
           </div>
 
           {/* Doctor Availability display */}
-          <div className="card">
-            <h2 className="text-base font-bold text-slate-800 mb-3">On-Duty Doctors</h2>
+          <div className="card" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--color-border)' }}>
+            <div className="section-title mb-3">On-Duty Doctors</div>
             <div className="space-y-2">
               {doctorsList.map(doc => (
-                <div key={doc.id} className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100 text-xs">
+                <div key={doc.id} className="flex items-center justify-between p-2.5 rounded-xl text-xs border border-borderMuted/30"
+                  style={{ backgroundColor: 'rgba(11,15,25,0.3)' }}>
                   <div className="flex items-center gap-2">
-                    <span className={['w-2 h-2 rounded-full', doc.is_available ? 'bg-green-500' : 'bg-slate-400'].join(' ')}></span>
-                    <span className="font-semibold text-slate-800">Dr. {doc.name}</span>
+                    <span className="w-2 h-2 rounded-full animate-pulse" style={{
+                      backgroundColor: doc.is_available ? '#10b981' : '#94a3b8',
+                      boxShadow: doc.is_available ? '0 0 8px rgba(16,185,129,0.5)' : 'none'
+                    }}></span>
+                    <span className="font-semibold text-textHigh">Dr. {doc.name}</span>
                   </div>
-                  <span className={['px-2 py-0.5 rounded text-[10px] font-bold', doc.is_available ? 'bg-green-50 text-green-700' : 'bg-slate-100 text-slate-500'].join(' ')}>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: doc.is_available ? 'rgba(16,185,129,0.1)' : 'rgba(148,163,184,0.1)',
+                      color: doc.is_available ? '#10b981' : 'var(--color-text-muted)',
+                      border: `1px solid ${doc.is_available ? 'rgba(16,185,129,0.2)' : 'var(--color-border)'}`
+                    }}>
                     {doc.is_available ? 'Available' : 'On Break'}
                   </span>
                 </div>
               ))}
               {doctorsList.length === 0 && (
-                <p className="text-xs text-slate-400 text-center py-2">No doctors configured.</p>
+                <p className="text-xs text-center py-2" style={{ color: 'var(--color-text-muted)' }}>No doctors configured.</p>
               )}
             </div>
           </div>
@@ -769,26 +862,27 @@ export default function ReceptionistDashboard() {
         <div className="lg:col-span-3 flex flex-col gap-6">
           
           {/* Daily Summary statistics */}
-          <div className="card bg-gradient-to-br from-primary-900 to-primary-850 text-white border-0 shadow-lg">
-            <h2 className="text-sm font-bold opacity-80 uppercase tracking-wider mb-3">Today's Clinic Summary</h2>
+          <div className="card text-white border-0 shadow-lg"
+            style={{ background: 'linear-gradient(135deg, var(--primary-900) 0%, var(--primary-800) 100%)' }}>
+            <h2 className="text-xs font-extrabold opacity-95 uppercase tracking-wider mb-3">Today's Clinic Summary</h2>
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <p className="text-2xl font-bold">{summary.totalSeen}</p>
-                <p className="text-xs opacity-75">Patients Seen</p>
+                <p className="text-2xl font-black">{summary.totalSeen}</p>
+                <p className="text-[9px] opacity-75 uppercase tracking-wider font-extrabold mt-1">Patients Seen</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">₹{summary.totalBilled}</p>
-                <p className="text-xs opacity-75">Total Billed</p>
+                <p className="text-2xl font-black">₹{summary.totalBilled}</p>
+                <p className="text-[9px] opacity-75 uppercase tracking-wider font-extrabold mt-1">Total Billed</p>
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-white/20 pt-3">
               <div>
                 <span className="text-sm font-bold text-amber-300">{summary.unpaidCount}</span>
-                <span className="text-xs opacity-75 ml-1">Unpaid Bills</span>
+                <span className="text-[9px] opacity-75 ml-1.5 uppercase tracking-wider font-extrabold">Unpaid Bills</span>
               </div>
               <button
                 onClick={handleDownloadDayReport}
-                className="bg-white/10 hover:bg-white/20 transition-all text-xs py-1.5 px-3 rounded-lg border border-white/10 flex items-center gap-1 font-semibold"
+                className="bg-white/10 hover:bg-white/20 transition-all text-[9px] py-1.5 px-3 rounded-lg border border-white/10 flex items-center gap-1 font-bold uppercase tracking-wider"
               >
                 CSV Report
               </button>
@@ -796,40 +890,58 @@ export default function ReceptionistDashboard() {
           </div>
 
           {/* Unpaid Bills Sidebar Tracker */}
-          <div className="card flex-1 flex flex-col min-h-[300px]">
-            <h2 className="text-base font-bold text-slate-800 mb-3 pb-1 border-b border-surface-100 flex items-center justify-between">
-              <span>Unpaid Bills</span>
-              <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full">
+          <div className="card flex-1 flex flex-col min-h-[300px]" style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--color-border)' }}>
+            <div className="pb-2 mb-3 flex items-center justify-between border-b border-borderMuted/30">
+              <div className="section-title">Unpaid Bills</div>
+              <span className="text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider"
+                style={{
+                  backgroundColor: bills.filter(b => !b.paid).length > 0 ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
+                  color: bills.filter(b => !b.paid).length > 0 ? '#f87171' : '#10b981',
+                  border: `1px solid ${bills.filter(b => !b.paid).length > 0 ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'}`
+                }}>
                 {bills.filter(b => !b.paid).length} Unpaid
               </span>
-            </h2>
-            <div className="space-y-2 overflow-y-auto flex-1 pr-1 max-h-[400px]">
+            </div>
+            
+            <div className="space-y-2 overflow-y-auto flex-1 pr-1 max-h-[400px] scrollbar-thin">
               {bills.filter(b => !b.paid).map(bill => (
                 <div
                   key={bill.id}
-                  className="p-3 rounded-lg bg-red-50/50 border border-red-100 flex flex-col gap-1.5 transition-all text-xs"
+                  className="p-3 rounded-xl flex flex-col gap-1.5 border"
+                  style={{
+                    backgroundColor: 'rgba(239,68,68,0.025)',
+                    borderColor: 'rgba(239,68,68,0.15)',
+                    color: 'var(--color-text-high)'
+                  }}
                 >
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="font-semibold text-slate-800">{bill.expand?.patient?.name}</p>
-                      <p className="text-[10px] text-slate-500 mt-0.5">Token #{bill.expand?.token?.token_number}</p>
+                      <p className="font-bold text-xs">{bill.expand?.patient?.name}</p>
+                      <p className="text-[9px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>Token #{bill.expand?.token?.token_number}</p>
                     </div>
-                    <span className="font-bold text-red-700 bg-red-100/50 px-2 py-0.5 rounded">
+                    <span className="font-bold text-xs px-2 py-0.5 rounded"
+                      style={{ color: '#f87171', backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.15)' }}>
                       ₹{bill.total}
                     </span>
                   </div>
                   <button
                     onClick={() => handleMarkBillPaid(bill.id)}
-                    className="btn-primary w-full bg-red-600 hover:bg-red-700 text-[10px] py-1 shadow-sm mt-1"
+                    className="w-full font-bold text-[9px] py-1.5 rounded-lg shadow-sm mt-1 uppercase tracking-wider transition-all"
+                    style={{ backgroundColor: '#dc2626', color: '#ffffff' }}
+                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#b91c1c'}
+                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#dc2626'}
                   >
                     Mark Paid
                   </button>
                 </div>
               ))}
               {bills.filter(b => !b.paid).length === 0 && (
-                <p className="text-slate-400 text-center py-12 flex items-center justify-center flex-1 h-full">
-                  All bills cleared!
-                </p>
+                <div className="text-center py-12 flex flex-col items-center justify-center flex-1 h-full text-textMuted">
+                  <svg className="w-8 h-8 mb-2 opacity-35" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>All bills cleared!</p>
+                </div>
               )}
             </div>
           </div>
@@ -856,33 +968,37 @@ export default function ReceptionistDashboard() {
 
       {/* Bill Editor Overlay (Modal Form) */}
       {activeTokenToBill && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="card w-full max-w-lg bg-white p-6 rounded-card shadow-2xl relative max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-lg p-6 rounded-2xl shadow-2xl relative max-h-[90vh] flex flex-col animate-slideIn"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--color-border)', color: 'var(--color-text-high)' }}>
             <button
               onClick={() => setActiveTokenToBill(null)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-2xl"
+              className="absolute top-4 right-4 text-textMuted hover:text-textHigh font-bold text-2xl"
             >
               &times;
             </button>
-            <h2 className="text-lg font-bold text-slate-800 mb-1">
+            <h2 className="text-lg font-bold mb-1">
               Create Invoice
             </h2>
-            <p className="text-xs text-slate-500 mb-4 border-b border-surface-100 pb-2">
-              Patient: <span className="font-bold text-slate-700">{activeTokenToBill.expand?.patient?.name}</span> (Token #{activeTokenToBill.token_number})
+            <p className="text-xs mb-4 border-b border-borderMuted/30 pb-2" style={{ color: 'var(--color-text-muted)' }}>
+              Patient: <span className="font-bold" style={{ color: 'var(--color-text-high)' }}>{activeTokenToBill.expand?.patient?.name}</span> (Token #{activeTokenToBill.token_number})
             </p>
 
             <form onSubmit={handleCreateBill} className="space-y-4 flex-1 flex flex-col overflow-hidden">
               
               {/* Presets Row */}
               <div>
-                <p className="text-xs font-semibold text-slate-600 mb-1.5">Quick Presets</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Quick Presets</p>
                 <div className="flex flex-wrap gap-1.5">
                   {BILL_PRESETS.map((preset, idx) => (
                     <button
                       key={idx}
                       type="button"
                       onClick={() => handleApplyPreset(preset)}
-                      className="bg-slate-100 hover:bg-primary-50 hover:text-primary-700 text-slate-600 text-xs py-1 px-2.5 rounded border border-slate-200 transition-colors"
+                      className="text-[10px] py-1.5 px-2.5 rounded-lg border transition-all font-semibold"
+                      style={{ backgroundColor: 'var(--bg-canvas)', borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(56,189,248,0.4)'; e.currentTarget.style.color = 'var(--color-accent)'; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-muted)'; }}
                     >
                       + {preset.description} (₹{preset.amount})
                     </button>
@@ -891,12 +1007,13 @@ export default function ReceptionistDashboard() {
               </div>
 
               {/* Items List */}
-              <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[150px]">
-                <p className="text-xs font-semibold text-slate-600 mb-1">Invoice Line Items</p>
+              <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[150px] scrollbar-thin">
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>Invoice Line Items</p>
                 {billItems.map((item, idx) => (
-                  <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-50 p-2 border border-slate-200 rounded-lg">
+                  <div key={idx} className="grid grid-cols-12 gap-2 items-center p-2 rounded-xl border"
+                    style={{ backgroundColor: 'rgba(11,15,25,0.3)', borderColor: 'var(--color-border)' }}>
                     <input
-                      className="input col-span-7 py-1 px-2.5 text-xs bg-white"
+                      className="col-span-7 w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-lg py-1 px-2 text-[11px] focus:outline-none transition-all font-semibold"
                       placeholder="Item description"
                       value={item.description}
                       onChange={e => handleUpdateBillItem(idx, 'description', e.target.value)}
@@ -904,7 +1021,7 @@ export default function ReceptionistDashboard() {
                     />
                     <input
                       type="number"
-                      className="input col-span-3 py-1 px-2.5 text-xs bg-white"
+                      className="col-span-3 w-full bg-canvas border border-borderMuted text-textHigh placeholder-textMuted/50 rounded-lg py-1 px-2 text-[11px] focus:outline-none transition-all font-mono"
                       placeholder="Amount"
                       value={item.amount || ''}
                       onChange={e => handleUpdateBillItem(idx, 'amount', e.target.value)}
@@ -914,7 +1031,7 @@ export default function ReceptionistDashboard() {
                     <button
                       type="button"
                       onClick={() => handleRemoveBillRow(idx)}
-                      className="col-span-2 text-red-500 hover:text-red-700 text-xs font-semibold py-1 bg-white border border-red-200 rounded hover:bg-red-50"
+                      className="col-span-2 text-red-400 hover:text-red-350 text-[10px] font-bold py-1 bg-red-500/5 hover:bg-red-500/10 border border-red-500/20 rounded-lg"
                       disabled={billItems.length <= 1}
                     >
                       Remove
@@ -924,29 +1041,35 @@ export default function ReceptionistDashboard() {
                 <button
                   type="button"
                   onClick={handleAddBillRow}
-                  className="btn-secondary w-full text-xs py-1.5 border border-dashed border-primary-400 text-primary-700 hover:bg-primary-50"
+                  className="w-full text-[10px] font-bold py-2 border border-dashed rounded-xl transition-all"
+                  style={{ borderColor: 'rgba(56,189,248,0.4)', color: 'var(--color-accent)', backgroundColor: 'rgba(56,189,248,0.02)' }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(56,189,248,0.06)'}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(56,189,248,0.02)'}
                 >
                   + Add Line Item
                 </button>
               </div>
 
               {/* Total Summary */}
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/80 flex justify-between items-center text-sm font-semibold text-slate-800">
-                <span>Grand Total</span>
-                <span className="text-primary-700 text-lg">₹{billTotal}</span>
+              <div className="p-3.5 rounded-xl border flex justify-between items-center text-xs font-bold"
+                style={{ backgroundColor: 'var(--bg-canvas)', borderColor: 'var(--color-border)', color: 'var(--color-text-high)' }}>
+                <span className="uppercase tracking-wider">Grand Total</span>
+                <span className="text-xl" style={{ color: 'var(--color-accent)' }}>₹{billTotal}</span>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2 border-t border-surface-100">
+              <div className="flex justify-end gap-2 pt-3 border-t border-borderMuted/30">
                 <button
                   type="button"
                   onClick={() => setActiveTokenToBill(null)}
-                  className="btn-secondary py-2"
+                  className="px-4 py-2 rounded-full border transition-all text-xs font-semibold"
+                  style={{ backgroundColor: 'var(--bg-canvas)', borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="btn-primary py-2 px-6"
+                  className="px-5 py-2 rounded-full font-bold text-xs uppercase tracking-wider transition-all shadow-md"
+                  style={{ backgroundColor: 'var(--color-accent)', color: '#020617' }}
                 >
                   Generate Invoice & Print
                 </button>
@@ -958,73 +1081,79 @@ export default function ReceptionistDashboard() {
 
       {/* Patient History Modal */}
       {showHistoryModal && historyPatient && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="card w-full max-w-xl bg-white p-6 rounded-card shadow-2xl relative max-h-[85vh] flex flex-col">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="card w-full max-w-xl p-6 rounded-2xl shadow-2xl relative max-h-[85vh] flex flex-col animate-slideIn"
+            style={{ backgroundColor: 'var(--bg-card)', borderColor: 'var(--color-border)', color: 'var(--color-text-high)' }}>
             <button
               onClick={() => setShowHistoryModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-2xl"
+              className="absolute top-4 right-4 text-textMuted hover:text-textHigh font-bold text-2xl"
             >
               &times;
             </button>
-            <h2 className="text-lg font-bold text-slate-800 mb-1">
+            <h2 className="text-lg font-bold mb-1">
               Visit & Prescription History
             </h2>
-            <p className="text-xs text-slate-500 mb-4 border-b border-surface-100 pb-2">
-              Patient: <span className="font-bold text-slate-700">{historyPatient.name}</span> | Phone: {historyPatient.phone}
+            <p className="text-xs mb-4 border-b border-borderMuted/30 pb-2" style={{ color: 'var(--color-text-muted)' }}>
+              Patient: <span className="font-bold" style={{ color: 'var(--color-text-high)' }}>{historyPatient.name}</span> | Phone: {historyPatient.phone}
             </p>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin">
               {patientHistoryList.map((rx) => (
-                <div key={rx.id} className="p-4 rounded-lg bg-surface-50 border border-surface-200">
-                  <div className="flex justify-between items-start mb-2 border-b border-surface-100 pb-1.5 text-xs text-slate-500">
-                    <span>Date: <span className="font-semibold text-slate-700">{new Date(rx.created_at || rx.created).toLocaleDateString('en-IN')}</span></span>
-                    <span>Doctor: <span className="font-semibold text-slate-700">Dr. {rx.expand?.doctor?.name || 'Unknown'}</span></span>
+                <div key={rx.id} className="p-4 rounded-xl border text-xs"
+                  style={{ backgroundColor: 'rgba(11,15,25,0.3)', borderColor: 'var(--color-border)' }}>
+                  <div className="flex justify-between items-start mb-2 border-b pb-1.5 text-[10px]"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
+                    <span>Date: <span className="font-semibold text-textHigh">{formatDate(rx.created_at || rx.created)}</span></span>
+                    <span>Doctor: <span className="font-semibold text-textHigh">Dr. {rx.expand?.doctor?.name || 'Unknown'}</span></span>
                   </div>
                   {rx.diagnosis && (
-                    <div className="mb-2 text-xs">
-                      <p className="font-bold text-slate-700">Diagnosis:</p>
-                      <p className="text-slate-600 bg-white p-2 rounded border border-slate-100 mt-0.5">{rx.diagnosis}</p>
+                    <div className="mb-2.5">
+                      <p className="font-bold text-[10px] uppercase tracking-wider mb-1" style={{ color: 'var(--color-text-muted)' }}>Diagnosis</p>
+                      <p className="p-2.5 rounded-lg border font-medium" style={{ backgroundColor: 'var(--bg-canvas)', borderColor: 'var(--color-border)' }}>{rx.diagnosis}</p>
                     </div>
                   )}
                   <div>
-                    <p className="text-xs font-bold text-slate-700 mb-1">Medicines Prescribed:</p>
-                    <table className="w-full text-[11px] text-left border-collapse bg-white rounded border border-slate-200/50">
-                      <thead>
-                        <tr className="bg-slate-100 text-slate-700 border-b border-slate-200">
-                          <th className="p-1.5">Medicine</th>
-                          <th className="p-1.5">Dosage</th>
-                          <th className="p-1.5 text-right">Duration</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(typeof rx.medicines === 'string' ? JSON.parse(rx.medicines) : rx.medicines).map((m, idx) => (
-                          <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-slate-55">
-                            <td className="p-1.5 font-medium text-slate-800">{m.name}</td>
-                            <td className="p-1.5 text-slate-600">{m.dosage}</td>
-                            <td className="p-1.5 text-slate-600 text-right">{m.duration}</td>
+                    <p className="font-bold text-[10px] uppercase tracking-wider mb-1.5" style={{ color: 'var(--color-text-muted)' }}>Medicines Prescribed</p>
+                    <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--color-border)' }}>
+                      <table className="w-full text-[11px] text-left border-collapse" style={{ backgroundColor: 'var(--bg-card)' }}>
+                        <thead>
+                          <tr className="text-[10px] font-bold border-b" style={{ backgroundColor: 'var(--bg-canvas)', borderColor: 'var(--color-border)', color: 'var(--color-text-muted)' }}>
+                            <th className="p-2">Medicine</th>
+                            <th className="p-2">Dosage</th>
+                            <th className="p-2 text-right">Duration</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {(typeof rx.medicines === 'string' ? JSON.parse(rx.medicines) : rx.medicines).map((m, idx) => (
+                            <tr key={idx} className="border-b last:border-0" style={{ borderColor: 'rgba(30,41,59,0.3)' }}>
+                              <td className="p-2 font-semibold">{m.name}</td>
+                              <td className="p-2 font-mono" style={{ color: 'var(--color-text-muted)' }}>{m.dosage}</td>
+                              <td className="p-2 text-right" style={{ color: 'var(--color-text-muted)' }}>{m.duration}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                   {rx.notes && (
-                    <div className="mt-2 text-xs">
-                      <p className="font-semibold text-slate-600">Doctor Notes:</p>
-                      <p className="text-slate-500 italic mt-0.5">{rx.notes}</p>
+                    <div className="mt-2.5">
+                      <p className="font-bold text-[10px] uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>Doctor Notes</p>
+                      <p className="italic mt-0.5" style={{ color: 'var(--color-text-high)' }}>"{rx.notes}"</p>
                     </div>
                   )}
                 </div>
               ))}
               {patientHistoryList.length === 0 && (
-                <p className="text-slate-400 text-center py-12 text-sm">No prescriptions found for this patient.</p>
+                <p className="text-center py-12 text-xs" style={{ color: 'var(--color-text-muted)' }}>No prescriptions found for this patient.</p>
               )}
             </div>
             
-            <div className="flex justify-end pt-4 border-t border-surface-100 mt-4">
+            <div className="flex justify-end pt-4 border-t border-borderMuted/30 mt-4">
               <button
                 type="button"
                 onClick={() => setShowHistoryModal(false)}
-                className="btn-primary py-2 px-6"
+                className="px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-wider transition-all"
+                style={{ backgroundColor: 'var(--color-accent)', color: '#020617' }}
               >
                 Close History
               </button>

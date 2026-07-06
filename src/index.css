@@ -469,6 +469,7 @@ a { color: inherit; text-decoration: none; }
   .lg\:col-span-4  { grid-column: span 4 / span 4; }
   .lg\:col-span-5  { grid-column: span 5 / span 5; }
   .lg\:col-span-12 { grid-column: span 12 / span 12; }
+  .lg\:grid-cols-12 { grid-template-columns: repeat(12, minmax(0, 1fr)); }
   .lg\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .lg\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
